@@ -1,0 +1,13 @@
+question,kind,expected_source,expected_pages,answer,cited,answer_ok,page_ok,seconds
+How many identical layers does the Transformer encoder have?,answer,attention.pdf,3,6,attention.pdf p3,True,True,93.7
+How many attention heads does the base model use?,answer,attention.pdf,5,The base model uses h = 8 parallel attention layers.,attention.pdf p5,True,True,5.2
+What dropout rate does the base model use?,answer,attention.pdf,8,"For the base model, we used a rate of Pdrop = 0.1.",attention.pdf p8,True,True,62.9
+What BLEU score did the Transformer get on English to German translation?,answer,attention.pdf,1 8,25.8,attention.pdf p8,False,True,66.1
+Which Wikipedia dump does RAG use for its document index?,answer,rag_paper.pdf,4 7,RAG uses an index built using the DrQA [5] Wikipedia dump from December 2016.,rag_paper.pdf p7,False,True,50.3
+How many documents are in the RAG Wikipedia index?,answer,rag_paper.pdf,4 19,82,rag_paper.pdf p8,False,False,58.6
+How are the LoRA matrices A and B initialized?,answer,lora.pdf,3,"We use a random Gaussian initialization forA and zero forB, so ∆W =BA is zero at the beginning of training.",lora.pdf p3,True,True,1446.7
+How is the subspace similarity measure in LoRA related to the standard Projection Metric?,answer,lora.pdf,17,The subspace similarity measure in LoRA is simply a reverse of the standard Projection Metric that measures distance between subspaces.,lora.pdf p17,True,True,78.9
+How was the data collected in the study of students learning languages with mobile devices?,answer,ej1172284.pdf,4,The data were gathered by means of a semi-structured interview.,ej1172284.pdf p4,True,True,84.4
+In which countries does Infosys carry out CSR initiatives outside India?,answer,infosys_board_report.pdf,11,"The context mentions that Infosys undertakes CSR initiatives outside of India in the US, Australia, and various parts of Europe.",infosys_board_report.pdf p11,True,True,73.9
+What is the capital of France?,refuse,,,I could not find this in your documents.,,True,,2.3
+How many parameters does GPT-4 have?,refuse,,,Don't know.,,True,,85.2

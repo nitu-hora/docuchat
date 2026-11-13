@@ -1,0 +1,13 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Local data (rebuilt by uploading PDFs)
+chroma_db/
+sample_docs/
+
+# Secrets (none are needed, but never commit them)
+.env
+chroma_exp/
+chroma_lc/
