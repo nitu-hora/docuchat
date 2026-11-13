@@ -1,0 +1,7 @@
+embedding_model,chunk_tokens,chunks,questions,hit_at_1,hit_at_5,mrr,worst_real_distance,closest_trap_distance,index_seconds
+nomic-embed-text,200,398,20,13,18,0.75,0.57,0.64,214.6
+nomic-embed-text,500,179,20,14,18,0.79,0.63,0.68,206.2
+nomic-embed-text,800,129,20,12,18,0.7,0.67,0.61,181.1
+bge-m3,200,398,20,16,18,0.85,0.91,0.84,550.9
+bge-m3,500,179,20,18,19,0.92,0.86,0.85,506.5
+bge-m3,800,129,20,14,19,0.82,0.91,0.84,534.1

@@ -11,3 +11,4 @@ sample_docs/
 .env
 chroma_exp/
 chroma_lc/
+pdf_store/

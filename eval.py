@@ -2,7 +2,6 @@ import csv
 import datetime
 import re
 import statistics
-import sys
 import time
 from pathlib import Path
 
@@ -138,24 +137,7 @@ def update_readme(block):
     print("README.md updated.")
 
 
-def load_csv():
-    """Read eval/results.csv back, so the README block can be rebuilt without re-running."""
-    rows = []
-    with open(RESULTS_CSV, newline="", encoding="utf-8") as file:
-        for row in csv.DictReader(file):
-            row["answer_ok"] = row["answer_ok"] == "True"
-            row["page_ok"] = None if row["page_ok"] == "" else row["page_ok"] == "True"
-            row["seconds"] = float(row["seconds"])
-            rows.append(row)
-    return rows
-
-
 if __name__ == "__main__":
-    if "--report" in sys.argv:
-        block = build_block(load_csv())
-        update_readme(block)
-        print(block)
-        raise SystemExit
     results = run()
     if not results:
         raise SystemExit("No questions were run. Index the PDFs first.")

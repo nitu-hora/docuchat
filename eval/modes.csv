@@ -1,0 +1,6 @@
+mode,questions,hit_at_1,hit_at_5,mrr,seconds_per_question
+dense (what DocuChat does now),20,14,18,0.79,0.14
+hybrid (vector + keyword),20,13,19,0.8,0.11
+dense + re-rank,20,12,19,0.77,14.72
+hybrid + re-rank,20,12,19,0.77,4.1
+hybrid + query rewriting,20,14,19,0.81,2.85

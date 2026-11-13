@@ -4,3 +4,4 @@ chroma_db/
 sample_docs/
 .git/
 .env
+pdf_store/

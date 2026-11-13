@@ -1,31 +1,39 @@
 # DocuChat
 
-Ask questions about your PDFs and get answers that tell you which file and page they came from.
-It runs on your own computer: Ollama writes the answers and makes the embeddings, Chroma stores the
-chunks, and Gradio gives you the web page. No API key and no cloud model.
+Ask questions about your PDFs and get answers that show the file and page they came from.
+Everything runs on your own laptop: no API key and no cloud model.
 
 > Built on top of the [StudyBuddy AI](https://github.com/nitu-hora/studybuddy-ai) RAG (Retrieval-Augmented Generation) pipeline.
-> StudyBuddy reads lecture notes and runs on Groq. DocuChat reads any PDF you upload and runs fully local.
+> StudyBuddy reads lecture notes and uses Groq. DocuChat reads any PDF you upload and runs fully on your laptop.
 
 ![DocuChat screenshot](docs/screenshot.png)
+
+<!-- Demo GIF (60 seconds): save it as docs/demo.gif, then replace this line with: ![Demo](docs/demo.gif) -->
+
+## What it does
+
+- Upload one or more PDFs.
+- Ask a question in the chat.
+- The answer ends with `From: file name, page number`. Click it to open the PDF at that page.
+- If the question is not about your PDFs, it says "I could not find this in your documents".
 
 ## How it works
 
 ```mermaid
 flowchart LR
     subgraph Upload["Upload a PDF (once per file)"]
-        A["PDF"] --> B["parse_pdf.py<br/>read page by page,<br/>cut into ~500-token chunks"]
-        B --> C["Ollama: nomic-embed-text<br/>chunk to vector"]
-        C --> D[("Chroma<br/>text + vector + file + page")]
+        A["PDF"] --> B["parse_pdf.py<br/>cut into chunks<br/>of about 500 tokens"]
+        B --> C["Ollama: nomic-embed-text<br/>chunk to numbers"]
+        C --> D[("Chroma<br/>chunk + file + page")]
     end
     subgraph Ask["Ask a question"]
-        Q["Question"] --> RW["Rewrite the question<br/>optional: REWRITE=1"]
-        RW --> E["Ollama: nomic-embed-text<br/>question to vector"]
-        E --> F["Chroma search, top chunks<br/>optional: + keyword search, merged<br/>(HYBRID=1)"]
+        Q["Question"] --> RW["Rewrite the question<br/>level-up: REWRITE=1"]
+        RW --> E["Ollama: nomic-embed-text<br/>question to numbers"]
+        E --> F["Chroma finds the closest chunks<br/>level-up: + keyword search<br/>(HYBRID=1)"]
         F --> G{"Closest chunk<br/>close enough?"}
         G -- no --> H["I could not find this<br/>in your documents"]
-        G -- yes --> RR["Re-rank to the best 5<br/>optional: RERANK=1"]
-        RR --> I["Ollama: qwen2.5:3b<br/>answer only from the 5 chunks"]
+        G -- yes --> RR["Re-rank to the best 5<br/>level-up: RERANK=1"]
+        RR --> I["Ollama: qwen2.5:3b<br/>answers from the 5 chunks"]
         I --> J["Answer + From: file, page"]
     end
     D --- F
@@ -33,79 +41,33 @@ flowchart LR
     style RR stroke-dasharray: 5 5
 ```
 
-Dashed boxes are optional and off by default. See "Optional upgrades" below.
+Dashed boxes are the level-ups. They are off by default.
 
-| File | Job |
-|---|---|
-| `parse_pdf.py` | Reads a PDF page by page and cuts each page into chunks of about 500 tokens (75 tokens overlap). Every chunk keeps its file name and page. |
-| `indexer.py` | Turns chunks into vectors with `nomic-embed-text` and saves them in Chroma. Re-uploading a file replaces its old chunks. |
-| `retrieval.py` | Finds the chunks for a question: vector search, plus the optional keyword search, re-ranker and question rewriting. |
-| `ask.py` | Takes the 5 best chunks, refuses if even the closest is far away, asks `qwen2.5:3b` to answer only from them, and works out the cited pages. |
-| `app.py` | The Gradio page: upload box, chat window, example questions, Clear History. |
-| `eval.py` | Runs 12 questions end to end (answer and cited page) and writes the results into this README. |
-| `experiment.py` | Compares chunk sizes, embedding models and the optional upgrades on 20 questions. Tests retrieval only. |
-| `langchain_version.py` | The same pipeline written with LangChain (loader, splitter, vector store, chain), for comparison. See `docs/langchain_basics.md`. |
-| `questions.py` | The test questions, each with the file and page where the answer is. |
+In words:
 
-## Choices and why
+1. Each PDF is read page by page and cut into chunks of about 500 tokens (75 tokens overlap). A chunk never goes across two pages, so each chunk has one exact page.
+2. Each chunk is turned into numbers (an embedding) by `nomic-embed-text`. Chroma saves the chunk, its numbers, the file name and the page.
+3. A question is turned into numbers by the same model. Chroma returns the 5 closest chunks.
+4. If even the closest chunk is too far away, the app says it cannot find the answer.
+5. Otherwise `qwen2.5:3b` writes the answer using only those 5 chunks. It is told to say "don't know" if the answer is not there.
+6. The app shows the file and page of the chunk the answer was copied from, as a link to the PDF.
 
-| Choice | Value | Why |
-|---|---|---|
-| Chunk size | 500 tokens, 75 overlap | Ollama's default context window is reported as 4,096 tokens. Five chunks of about 500 tokens plus the instructions use about 2,200 tokens, so they fit. The overlap keeps a fact that sits on a cut. |
-| Cut at | Sentences, inside one page | No sentence is sliced in half, and every chunk has one exact page. |
-| Token counting | `tiktoken` `cl100k_base` | The limits are in tokens. It is OpenAI's tokenizer, so counts are approximate for the Qwen and Nomic models. |
-| Embeddings | `nomic-embed-text` with the `search_document:` / `search_query:` prefixes | The model card asks for task prefixes. Chunks and questions must use the same model. |
-| Retrieval | Top 5 chunks | The mentor spec. Top 3 is faster (see Speed). |
-| Gate | Refuse if the closest chunk has distance above 0.85 | Real questions scored 0.46 to 0.6, a near-topic question 0.7, an unrelated one 1.04. The number comes from this model's own distances. |
-| Gate and other embedding models | The 0.85 limit is for `nomic-embed-text` | Distances from another model are on another scale. If you change `EMBED_MODEL`, re-index and pick a new limit; the experiment table prints the two distances you need. |
-| Answer model | `qwen2.5:3b`, temperature 0 | Small enough to run on a CPU-only laptop with 7.7 GB RAM. A 7B model is the next thing to try. Temperature 0 makes answers repeatable. |
-| Citations | Pages of the chunks whose text the answer copied, else the closest chunk | A 3B model copies sentences almost word for word, so the copied phrase shows which chunk it used. |
+## Setup
 
-## Run it
-
-You need Python and [Ollama](https://ollama.com) installed. Tested on Windows with Python 3.13.
+You need Python and [Ollama](https://ollama.com). Tested on Windows with Python 3.13.
 
 ```powershell
-git clone https://github.com/nitu-hora/docuchat.git
-cd docuchat
-python -m venv .venv
-.venv\Scripts\activate
+git clone https://github.com/nitu-hora/docuchat.git; cd docuchat
 pip install -r requirements.txt
-ollama pull qwen2.5:3b
-ollama pull nomic-embed-text
+ollama pull qwen2.5:3b; ollama pull nomic-embed-text
 python app.py
 ```
 
-On macOS or Linux, activate with `source .venv/bin/activate`. Then open <http://127.0.0.1:7860>,
-upload one or more PDFs, click **Index PDFs**, and ask a question.
+Open <http://127.0.0.1:7860>, upload PDFs, click **Index PDFs**, and ask.
 
-The first run needs internet once: Ollama downloads the two models, and `tiktoken` downloads its
-tokenizer file. After that, everything works offline.
-
-`.env.example` lists the optional settings (model names, Ollama address). None are needed on a normal run.
-
-### Optional upgrades
-
-Off by default, so the app behaves as described above. Switch them on with environment settings
-before starting the app (PowerShell shown; use `export HYBRID=1` on macOS or Linux):
-
-```powershell
-$env:HYBRID = "1"
-$env:RERANK = "1"
-$env:REWRITE = "1"
-python app.py
-```
-
-| Setting | What it does | Cost |
-|---|---|---|
-| `HYBRID=1` | Also runs keyword search (BM25, a word-matching score) and merges it with vector search by Reciprocal Rank Fusion (RRF). Helps when the question contains an exact word such as "BART" (failure 5). | Small. Needs `rank-bm25`, which is in `requirements.txt`. |
-| `RERANK=1` | Takes the 20 best candidates and re-scores each question and chunk pair with a cross-encoder (`cross-encoder/ms-marco-MiniLM-L-6-v2`), then keeps the best 5. | Extra install: `pip install sentence-transformers` (a large download, it brings PyTorch). The model downloads on first use. |
-| `REWRITE=1` | Asks `qwen2.5:3b` to turn the question into a better search query. With chat history it also replaces words like "it" using the earlier turns. The answer prompt itself still sees only the new question. | One extra model call per question, a few seconds on a CPU. |
-
-Whether they help is measured by `experiment.py` (next section). The plain (vector-only) mode
-has been run end to end with Ollama (see Evaluation). Hybrid search, the re-ranker and query rewriting have
-not been run against Ollama yet: they were tested with fake vectors and a fake re-ranker, so the
-experiment table below will be their first real test.
+- A virtual environment (`python -m venv .venv`) is a good idea but is not needed.
+- The first run needs internet once (Ollama downloads the models and `tiktoken` downloads a file). After that it works offline.
+- The mentor's list suggests 8B models (`qwen3:8b` or `llama3.1:8b`). This laptop has 7.7 GB RAM and no GPU, so `qwen2.5:3b` is used. A bigger model can be set with `LLM_MODEL` in `.env.example`.
 
 ### Docker (optional)
 
@@ -115,15 +77,44 @@ docker compose exec ollama ollama pull qwen2.5:3b
 docker compose exec ollama ollama pull nomic-embed-text
 ```
 
-Then open <http://localhost:7860>. Status: the Compose files are written but have not been run yet
-by the author, and Docker adds memory use on a small laptop.
+Then open <http://localhost:7860>. The Docker files are written but not tested yet.
+
+## What was built
+
+Build steps from the mentor's list:
+
+1. Load PDFs with page numbers: `parse_pdf.py` (uses `pypdf`).
+2. Chunks of about 500 tokens with 75 overlap, saving file and page: `parse_pdf.py`.
+3. Embeddings saved in a persistent Chroma folder: `indexer.py`.
+4. Top 5 chunks and a prompt that says "answer only from the context, say you don't know otherwise": `ask.py`.
+5. The answer with clickable citations (file + page): `ask.py` and `app.py`.
+6. Gradio chat with a file upload box: `app.py`.
+
+Level-ups:
+
+- **Compare 3 chunk sizes and 2 embedding models on 20 questions:** `experiment.py` (see "Experiment" below).
+- **Hybrid search (BM25 keyword + vector) and a re-ranker:** `retrieval.py`. Turn on with `HYBRID=1` and `RERANK=1`. The re-ranker is a small cross-encoder (`cross-encoder/ms-marco-MiniLM-L-6-v2`), which needs `pip install sentence-transformers`. A different one, such as `bge-reranker`, can be set with `RERANK_MODEL` (not tried).
+- **Query rewriting for vague follow-up questions:** `retrieval.py`. Turn on with `REWRITE=1`. It uses the chat history to replace words like "it".
+
+To turn them on in PowerShell, set them before `python app.py`, for example `$env:HYBRID = "1"`.
+
+Status: the normal mode and the level-ups were all run with Ollama (see Evaluation and Experiment).
+
+## Choices
+
+- **Chunk size: 500 tokens, 75 overlap.** Five chunks plus the instructions come to about 2,200 tokens. Ollama's default window is reported as 4,096 tokens, so it fits. The overlap keeps a fact that sits on a cut.
+- **Tokens, not characters.** Model limits are in tokens. `tiktoken` is used to count, and it is OpenAI's tokenizer, so the count is only close for the Qwen and Nomic models.
+- **Embeddings: `nomic-embed-text`**, with the `search_document:` and `search_query:` prefixes that its model card asks for. Chunks and questions must use the same model.
+- **Distance limit: 0.85.** Real questions scored 0.46 to 0.6, a question near the topic 0.7, an unrelated one 1.04. This is how the app knows to say "I could not find this". The number is for this model. A different embedding model needs a new number.
+- **Answer model: `qwen2.5:3b`, temperature 0.** Temperature 0 gives the same answer each time.
+- **Pages shown:** the pages of the chunks whose words the answer copied. If none match, the closest chunk.
 
 ## Evaluation
 
-`python eval.py` fills in this table (about 15 minutes on a CPU; my run took longer because one question was very slow, see the note under the table). `python eval.py --report` rebuilds the table from the saved `eval/results.csv` without re-running.
+`python eval.py` asks 12 questions and fills in this table (about 15 minutes on a laptop CPU).
 
 <!-- EVAL:START -->
-Run on 2026-11-13 with `python eval.py`. Model `qwen2.5:3b`, embeddings `nomic-embed-text`, retrieval `dense`, top-5 chunks, laptop CPU only. The answer check is automatic: the answer must contain a keyword that the PDF contains. It is not a human grade.
+Run on 2026-11-13 with `python eval.py`. Model `qwen2.5:3b`, embeddings `nomic-embed-text`, top-5 chunks, laptop CPU only. The answer check is automatic: the answer must contain a word that the PDF contains. It is not a human grade.
 
 | Check | Result |
 |---|---|
@@ -148,89 +139,90 @@ Run on 2026-11-13 with `python eval.py`. Model `qwen2.5:3b`, embeddings `nomic-e
 | What is the capital of France? | pass | - | 2.3 |
 | How many parameters does GPT-4 have? | pass | - | 85.2 |
 
-The median is used because one question took 1447 s, far above the rest. I did not investigate the cause. A single slow run would distort an average.
+The median is used because one question took 1447 s, far above the rest. The cause was not looked into. One slow run would make an average look wrong.
 <!-- EVAL:END -->
 
-The test PDFs are not in this repo. Download them and put them in `sample_docs/`:
+The test PDFs are not in this repo. Put them in `sample_docs/`:
 [Attention Is All You Need](https://arxiv.org/abs/1706.03762) as `attention.pdf`,
 [the RAG paper](https://arxiv.org/abs/2005.11401) as `rag_paper.pdf`,
-[LoRA](https://arxiv.org/abs/2106.09685) as `lora.pdf`, an article on mobile-assisted language
-learning (ERIC EJ1172284) as `ej1172284.pdf`, and the Board's report of an Infosys annual report as
-`infosys_board_report.pdf`. Questions without their PDF are skipped.
+[LoRA](https://arxiv.org/abs/2106.09685) as `lora.pdf`,
+an article on mobile learning of English (ERIC EJ1172284) as `ej1172284.pdf`,
+and the Board's report from an Infosys annual report as `infosys_board_report.pdf`.
 
-### Speed (measured on a laptop with 7.7 GB RAM and no supported GPU)
+Speed, on a laptop with 7.7 GB RAM and no GPU: indexing `attention.pdf` (15 pages) took 31 seconds for 29 chunks. One answer takes about 60 seconds with 5 chunks and about 35 seconds with 3 chunks. A refused question takes about 2 seconds. Reading the chunks is the slow part on a CPU.
 
-| What | Result |
-|---|---|
-| Indexing `attention.pdf` (15 pages) | 29 chunks in 31 seconds |
-| One answer, top 5 chunks (about 2,200 prompt tokens) | 58.7 seconds |
-| One answer, top 3 chunks (about 1,200 prompt tokens) | 35.3 seconds, same correct answer on that question |
-| A question the gate refuses | about 2 seconds |
+### What went wrong
 
-Reading the prompt is the slow part on a CPU, so time grows with the number of chunks.
+1. The same PDF uploaded under two names was saved twice. The duplicate check uses the file name only.
+2. The 3B model gave a hedging answer to a question it could answer. A softer rule and temperature 0 fixed it.
+3. Telling the model to reply with one exact sentence when unsure made it refuse questions it could answer. The wording was reverted.
+4. Page numbers were wrong at first. Now the pages come from the chunks the answer copied.
+5. Search missed a chunk: for "retriever and generator in RAG" it found the DPR chunk but not the one naming BART. Hybrid search is meant to fix this.
+6. The model missed a fact in a chunk it was given (Infosys CSR in Australia and Europe). The page was right but the answer was incomplete.
+7. In the evaluation, 3 answers missed the expected word (BLEU score, Wikipedia dump, RAG index size), and the RAG index size question also showed a wrong page. The cause is not checked yet. Possible causes, not tested: the small model reads badly (as in 6), and the BLEU question has two valid numbers in the paper (27.3 and 28.4) while the check accepts only 28.4.
 
-### Failures found while testing, and what I did
+## Experiment (level-up)
 
-1. **The same paper uploaded under two file names was stored twice.** The duplicate check is by file name. Fix not built: fingerprint the file content.
-2. **The 3B model hedged on a question it could answer** ("the context does not specify"). A softer rule plus `temperature=0` fixed it.
-3. **Telling the model to reply with an exact refusal sentence made it refuse answerable questions.** I reverted the wording. One sentence in a prompt can flip a small model, so I test with real questions.
-4. **Citations were wrong.** First every retrieved page was listed, then only the closest chunk's page. In a manual check of three answers, two cited the wrong page. Now it cites the chunks whose text the answer copied.
-5. **Search missed a chunk.** For "retriever and generator in RAG" it found the DPR chunk but not the one naming BART. Dense (meaning-based) search can miss a plain term. Hybrid search (`HYBRID=1`) is built to fix this; the experiment table shows whether it did.
-6. **The model missed a fact in a chunk it was given** (Infosys CSR in Australia and Europe). The cited page was right and the answer was incomplete. Not fixed.
-7. **In the 10-question evaluation, 3 answers missed the expected fact** (BLEU score, Wikipedia dump, RAG index size), and the RAG index size question also cited a wrong page. I have not yet checked whether the chunk the model saw contained the fact. Possible causes, untested: the 3B model's reading limit (as in failure 6), and for the BLEU question the paper has two valid numbers (27.3 for the base model, 28.4 for the big model) while the check accepts only 28.4. Next step: print the retrieved chunks for these three questions and try a 7B model.
+`python experiment.py` runs 20 questions on 3 chunk sizes (200, 500, 800 tokens) and 2 embedding models (`nomic-embed-text` and `bge-m3`). Then it compares plain search, hybrid search, the re-ranker and query rewriting. It uses its own folder `chroma_exp/`, so the real index is safe. Run `ollama pull bge-m3` first. It only tests the search step, not the answers.
 
-## Tests
-
-16 automatic tests check the parts that need no model: the word splitter, the result merging, hybrid search finding an exact word, citations, the refusal gate, chunking and the question file. They need no Ollama.
-
-```powershell
-python -m unittest discover -s tests -v
-```
-
-I ran them with a fake tokenizer in my workspace, because `tiktoken` cannot download its data there; run them on your own machine with the real one.
-
-## Experiment: chunk size, embedding model, retrieval upgrades
-
-`python experiment.py` runs 20 questions (each with the file and page of the true answer) against
-three chunk sizes (200, 500, 800 tokens) and two embedding models (`nomic-embed-text` and
-`bge-m3`), then compares the optional upgrades above on the setup DocuChat uses. It builds its own index in
-`chroma_exp/` and never touches `chroma_db/`. First run `ollama pull bge-m3`.
-It tests retrieval only (no answer model), so it is much faster than `eval.py`.
-
-Why `bge-m3` as the second model: its Ollama page lists an 8K-token context. `mxbai-embed-large` is
-listed with a 512-token context, too short for 500-token chunks. `nomic-embed-text` uses prefixes; I
-run `bge-m3` with none, which is an assumption I did not check against its model card.
+`bge-m3` was picked because its Ollama page lists an 8K context. `mxbai-embed-large` lists 512, which is too short for 500-token chunks. `bge-m3` is used without prefixes. That is an assumption that is not checked.
 
 <!-- EXPERIMENT:START -->
-Not run yet. Run `python experiment.py` and this section fills itself in.
+Run on 2026-11-14 with `python experiment.py`. 20 questions, top-5 chunks. **Hit@5** = a top-5 chunk comes from the right file and a right page. **Hit@1** = the first chunk does. **MRR** (Mean Reciprocal Rank) = average of 1/rank of the first right chunk, so 1.0 is perfect. Only retrieval is tested, not the answer text.
+
+**Chunk size x embedding model** (plain vector search)
+
+| Embedding model | Chunk size | Chunks | Hit@1 | Hit@5 | MRR | Worst real question distance | Closest off-topic distance | Index time (s) |
+|---|---|---|---|---|---|---|---|---|
+| nomic-embed-text | 200 | 398 | 13/20 | 18/20 | 0.75 | 0.57 | 0.64 | 214.6 |
+| nomic-embed-text | 500 | 179 | 14/20 | 18/20 | 0.79 | 0.63 | 0.68 | 206.2 |
+| nomic-embed-text | 800 | 129 | 12/20 | 18/20 | 0.7 | 0.67 | 0.61 | 181.1 |
+| bge-m3 | 200 | 398 | 16/20 | 18/20 | 0.85 | 0.91 | 0.84 | 550.9 |
+| bge-m3 | 500 | 179 | 18/20 | 19/20 | 0.92 | 0.86 | 0.85 | 506.5 |
+| bge-m3 | 800 | 129 | 14/20 | 19/20 | 0.82 | 0.91 | 0.84 | 534.1 |
+
+The two distance columns decide the refusal gate: it only works for a model if the worst real question is closer than the closest off-topic one. Distances from different models are not comparable with each other.
+
+**Retrieval upgrades** (on `nomic-embed-text`, 500-token chunks)
+
+| Retrieval | Hit@1 | Hit@5 | MRR | Seconds per question |
+|---|---|---|---|---|
+| dense (what DocuChat does now) | 14/20 | 18/20 | 0.79 | 0.14 |
+| hybrid (vector + keyword) | 13/20 | 19/20 | 0.8 | 0.11 |
+| dense + re-rank | 12/20 | 19/20 | 0.77 | 14.72 |
+| hybrid + re-rank | 12/20 | 19/20 | 0.77 | 4.1 |
+| hybrid + query rewriting | 14/20 | 19/20 | 0.81 | 2.85 |
+
 <!-- EXPERIMENT:END -->
+
+Which one wins: `bge-m3` with 500-token chunks put the right chunk first for 18 of 20 questions (MRR 0.92). `nomic-embed-text` with 500 tokens, which DocuChat uses now, did it for 14 of 20 (MRR 0.79). 500 tokens was the best size for both models.
+
+The catch with `bge-m3`: indexing took about 2.5 times longer (507 s against 206 s). Also its distances do not separate real questions from off-topic ones (worst real question 0.86, closest off-topic 0.85), so the "I don't know" distance limit would not work for it as it is. With `nomic-embed-text` they do separate (0.63 against 0.68), but the app limit of 0.85 is looser than that, so it only blocks clearly unrelated questions.
+
+Hybrid search, the re-ranker and query rewriting changed Hit@5 by one question (18 to 19) and Hit@1 by 0 to -2. On 20 questions that is too small to call a win. The re-ranker also made each search slower (4 to 15 s against 0.1 s). So they stay off by default.
 
 ## What I'd do next
 
-- **Read the experiment, then pick defaults.** Hybrid search, the re-ranker and query rewriting are built but off. Turn on only what the table shows helps, and check the speed cost.
-- **A bigger or hosted model.** A 7B model, or swapping `OLLAMA_URL` for a hosted model, for answers that are faster and read the chunks more carefully (failures 2 and 6).
-- **Follow-up questions.** With `REWRITE=1` the chat history is used to rewrite the search query. The answer prompt still sees only the new question, so the model itself has no memory of the chat.
-- **Fingerprint files** so the same PDF under another name is not stored twice.
-- **Chunk across short pages.** Chunks never cross a page, so a page with 100 tokens gives a small chunk, and a sentence that runs over a page break is cut. Merging would need page ranges in the citation.
-- **Scanned PDFs.** There is no OCR (Optical Character Recognition). A scanned PDF gives a clear error instead of an index.
-- **Tables and figures** come out as messy text.
-- **Prompt injection.** A PDF could contain instructions aimed at the model. The only defences are the "answer only from the context" rule and the distance gate.
-- **Citations** fall back to the closest chunk when the model rewords its answer instead of copying it.
+- Switch to `bge-m3` (it was better in the experiment) and set its own distance limit, or test a tighter limit (about 0.65) for `nomic-embed-text`.
+- Try a larger test set (more than 20 questions) before deciding about hybrid search, the re-ranker and rewriting.
+- Try a bigger model (7B or 8B) or a hosted one, for faster and more careful answers (problems 2 and 6).
+- Check the file content so the same PDF is not saved twice.
+- Follow-up questions: with `REWRITE=1` the chat is used to rewrite the search, but the answer step still sees only the new question.
+- Scanned PDFs: there is no OCR (Optical Character Recognition), so they give an error.
+- Tables and figures come out as messy text.
+- Prompt injection: a PDF could contain instructions meant for the model. Only the "answer from the context" rule and the distance limit protect against it.
+- Scaling: cache repeated questions, embed in batches (already done, 16 at a time), and watch rate limits and cost if a hosted model is used.
 
-## Project layout
+## Files
 
-```
-app.py            Gradio page
-ask.py            gate, answer, citations
-retrieval.py      vector search, hybrid, re-rank, query rewriting
-langchain_version.py   the same pipeline with LangChain (optional)
-indexer.py        embeddings and Chroma
-parse_pdf.py      PDF reading and chunking
-questions.py      the test questions
-eval.py           end-to-end evaluation script
-tests/            automatic tests (no Ollama needed)
-experiment.py     chunk size / embedding model / retrieval experiment
-eval/             results.csv, experiment.csv, modes.csv (created by the scripts)
-docs/             screenshot and LangChain notes
-Dockerfile, docker-compose.yml, requirements.txt, requirements-langchain.txt, .env.example
-```
+| File | What it does |
+|---|---|
+| `parse_pdf.py` | Reads a PDF and cuts it into chunks. |
+| `indexer.py` | Makes the embeddings and saves chunks in Chroma. |
+| `retrieval.py` | Finds the chunks. Has the level-ups: keyword search, re-ranker, question rewriting. |
+| `ask.py` | Checks the distance, asks the model, works out the pages to show. |
+| `app.py` | The Gradio web page. |
+| `eval.py` | Asks 12 questions and writes the Evaluation table. |
+| `experiment.py` | The level-up experiment. |
+| `questions.py` | The test questions, with the file and page of each true answer. |
+| `Dockerfile`, `docker-compose.yml`, `.env.example` | Docker and settings. |
