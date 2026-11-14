@@ -79,7 +79,7 @@ docker compose exec ollama ollama pull nomic-embed-text
 
 Then open <http://localhost:7860>.
 
-Tested once on Windows with Docker Desktop: indexing `attention.pdf` and one question (number of attention heads) worked, with the answer and the page 5 citation. On this laptop the first answer took about 7 minutes, against about 60 seconds without Docker. Docker Desktop gave the Ollama container 3.7 GiB of memory, and another container (Jenkins) was running at the same time. The reason for the extra time was not investigated. Only that one question was tried.
+Tested once on Windows with Docker Desktop: indexing `attention.pdf` and one question (number of attention heads) worked, with the answer and the page 5 citation. On this laptop the first answer took about 7 minutes, against about 60 seconds without Docker. The laptop has 7.7 GB RAM and no GPU, so everything runs on the CPU. Docker Desktop gave the containers 3.7 GiB of memory in total. While answering, the Ollama container used about 2.2 GiB (memory was not full) and about 7 CPU cores, and another container (Jenkins) was using some CPU at the same time. The exact reason for the extra time was not tested. Only that one question was tried.
 
 ## What was built
 
