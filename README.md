@@ -8,7 +8,7 @@ Everything runs on your own laptop: no API key and no cloud model.
 
 ![DocuChat screenshot](docs/screenshot.png)
 
-<!-- Demo GIF (60 seconds): save it as docs/demo.gif, then replace this line with: ![Demo](docs/demo.gif) -->
+![Demo](docs/demo.gif)
 
 ## What it does
 
