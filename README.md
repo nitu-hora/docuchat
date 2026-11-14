@@ -77,7 +77,9 @@ docker compose exec ollama ollama pull qwen2.5:3b
 docker compose exec ollama ollama pull nomic-embed-text
 ```
 
-Then open <http://localhost:7860>. The Docker files are written but not tested yet.
+Then open <http://localhost:7860>.
+
+Tested once on Windows with Docker Desktop: indexing `attention.pdf` and one question (number of attention heads) worked, with the answer and the page 5 citation. On this laptop the first answer took about 7 minutes, against about 60 seconds without Docker. Docker Desktop gave the Ollama container 3.7 GiB of memory, and another container (Jenkins) was running at the same time. The reason for the extra time was not investigated. Only that one question was tried.
 
 ## What was built
 
@@ -105,13 +107,13 @@ Status: the normal mode and the level-ups were all run with Ollama (see Evaluati
 - **Chunk size: 500 tokens, 75 overlap.** Five chunks plus the instructions come to about 2,200 tokens. Ollama's default window is reported as 4,096 tokens, so it fits. The overlap keeps a fact that sits on a cut.
 - **Tokens, not characters.** Model limits are in tokens. `tiktoken` is used to count, and it is OpenAI's tokenizer, so the count is only close for the Qwen and Nomic models.
 - **Embeddings: `nomic-embed-text`**, with the `search_document:` and `search_query:` prefixes that its model card asks for. Chunks and questions must use the same model.
-- **Distance limit: 0.85.** Real questions scored 0.46 to 0.6, a question near the topic 0.7, an unrelated one 1.04. This is how the app knows to say "I could not find this". The number is for this model. A different embedding model needs a new number.
+- **Distance limit: 0.85.** Real questions scored 0.46 to 0.63 (the 20 experiment questions), a question near the topic 0.7, an unrelated one 1.04. This is how the app knows to say "I could not find this". The number is for this model. A different embedding model needs a new number.
 - **Answer model: `qwen2.5:3b`, temperature 0.** Temperature 0 gives the same answer each time.
 - **Pages shown:** the pages of the chunks whose words the answer copied. If none match, the closest chunk.
 
 ## Evaluation
 
-`python eval.py` asks 12 questions and fills in this table (about 15 minutes on a laptop CPU).
+`python eval.py` asks 12 questions and fills in this table (10 to 35 minutes on a laptop CPU, depending on the slow question).
 
 <!-- EVAL:START -->
 Run on 2026-11-13 with `python eval.py`. Model `qwen2.5:3b`, embeddings `nomic-embed-text`, top-5 chunks, laptop CPU only. The answer check is automatic: the answer must contain a word that the PDF contains. It is not a human grade.
